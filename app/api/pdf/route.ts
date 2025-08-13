@@ -196,8 +196,6 @@ export async function GET(req: NextRequest) {
       process.platform === 'darwin' ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : undefined,
     ].filter(Boolean);
 
-    let launchError;
-
     // Try to launch with different configurations
     for (const executablePath of chromePaths) {
       try {
@@ -230,7 +228,6 @@ export async function GET(req: NextRequest) {
              } catch (error) {
          const errorMessage = error instanceof Error ? error.message : 'Unknown error';
          console.log(`Failed to launch with path ${executablePath}:`, errorMessage);
-         launchError = error;
          continue;
        }
     }
