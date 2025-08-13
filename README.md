@@ -76,6 +76,30 @@ This project uses [`next/font`](https://nextjs.org/docs/basic-features/font-opti
 | `npm run build` | Build for production |
 | `npm run start` | Start production server |
 | `npm run lint` | Run ESLint |
+| `npm run install-chrome` | Install Chrome for PDF generation |
+
+## 📄 PDF Generation Setup
+
+This application includes a PDF generation feature that uses Puppeteer to convert web pages to PDF. To use this feature:
+
+### Prerequisites
+1. **Install Chrome for Puppeteer**:
+   ```bash
+   npm run install-chrome
+   ```
+   
+   This will install the Chrome browser required by Puppeteer.
+
+### Usage
+The PDF generation API is available at `/api/pdf` and accepts a URL parameter:
+```
+GET /api/pdf?url=https://example.com
+```
+
+### Troubleshooting
+- If you encounter "Could not find Chrome" errors, run `npm run install-chrome`
+- For production deployments, consider using a Docker container with Chrome pre-installed
+- The API includes fallback mechanisms and detailed error messages for debugging
 
 ## 📚 Learn More
 

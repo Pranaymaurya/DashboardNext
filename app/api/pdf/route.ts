@@ -201,6 +201,8 @@ export async function GET(req: NextRequest) {
         '--disable-default-apps',
         '--disable-sync',
       ],
+      // Use the bundled Chromium that comes with Puppeteer
+      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
     });
 
     const page = await browser.newPage();
@@ -339,13 +341,23 @@ startxref
     console.error('Error generating PDF:', error);
     
     const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    const statusCode = errorMessage.includes('timeout') ? 504 : 500;
+    let statusCode = 500;
+    let suggestion = 'Try with a simpler page or check if the URL is accessible';
+    
+    // Handle specific Chrome installation errors
+    if (errorMessage.includes('Could not find Chrome') || errorMessage.includes('Chrome not found')) {
+      statusCode = 503;
+      suggestion = 'Chrome browser is not installed. Please run: npx puppeteer browsers install chrome';
+    } else if (errorMessage.includes('timeout')) {
+      statusCode = 504;
+      suggestion = 'Request timed out. Try with a simpler page or check if the URL is accessible';
+    }
     
     return NextResponse.json({ 
       error: 'Failed to generate PDF', 
       details: errorMessage,
       timestamp: new Date().toISOString(),
-      suggestion: 'Try with a simpler page or check if the URL is accessible'
+      suggestion: suggestion
     }, { status: statusCode });
   } finally {
     if (browser) {
