@@ -2,7 +2,7 @@
 
 import { Search, Bell, ChevronDown, Sun, Moon } from "lucide-react"
 import { Input } from "@/components/ui/input"
-import { useRouter } from "next/navigation"
+// import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useTheme } from "next-themes"

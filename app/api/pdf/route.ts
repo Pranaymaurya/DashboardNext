@@ -1,11 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server';
-import puppeteer from 'puppeteer';
+import puppeteer, { Page } from 'puppeteer';
 
 // Utility function for delays
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
 // Advanced page loading with multiple strategies
-async function loadFullPageContent(page: puppeteer.Page) {
+async function loadFullPageContent(page: Page) {
   console.log('Loading full page content...');
   
   // Strategy 1: Aggressive infinite scroll
@@ -21,12 +21,12 @@ async function loadFullPageContent(page: puppeteer.Page) {
 
     while (Date.now() - startTime < maxScrollTime) {
       // Get current scroll height
-      const scrollHeight = Math.max(
-        document.body.scrollHeight,
-        document.documentElement.scrollHeight,
-        document.body.offsetHeight,
-        document.documentElement.offsetHeight
-      );
+      // const scrollHeight = Math.max(
+      //   document.body.scrollHeight,
+      //   document.documentElement.scrollHeight,
+      //   document.body.offsetHeight,
+      //   document.documentElement.offsetHeight
+      // );
 
       // Scroll down
       window.scrollBy(0, scrollStep);
@@ -98,7 +98,7 @@ async function loadFullPageContent(page: puppeteer.Page) {
 }
 
 // Get comprehensive page dimensions
-async function getPageDimensions(page: puppeteer.Page) {
+async function getPageDimensions(page: Page) {
   return await page.evaluate(() => {
     // Get all possible height measurements
     const body = document.body;
@@ -275,13 +275,13 @@ export async function GET(req: NextRequest) {
         timeout: 90000,
       });
     } catch (pdfError) {
-      console.log('Full page PDF failed, trying screenshot method...');
+      console.log(pdfError);
       
       // Fallback: Screenshot to PDF
-      const screenshot = await page.screenshot({
-        fullPage: true,
-        type: 'png',
-      });
+      // const screenshot = await page.screenshot({
+      //   fullPage: true,
+      //   type: 'png',
+      // });
 
       // Create a simple PDF wrapper for the screenshot
       // Note: This is a basic implementation. For production, consider using a proper PDF library
@@ -331,7 +331,9 @@ startxref
     headers.set('Content-Disposition', 'attachment; filename="full-webpage.pdf"');
     headers.set('Content-Length', pdfBuffer.length.toString());
 
-    return new NextResponse(pdfBuffer, { headers });
+    return new NextResponse(new Blob([pdfBuffer as BlobPart]), {
+      headers,
+    });
 
   } catch (error) {
     console.error('Error generating PDF:', error);
