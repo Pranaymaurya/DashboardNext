@@ -13,11 +13,12 @@ import { DatePickerWithRange } from "@/components/date-range-picker"
 import { Calendar } from "lucide-react"
 import type { DateRange } from "react-day-picker"
 import { format } from "date-fns"
+import type { DashboardData } from "@/types/dashboard"
 
 export function DashboardContent() {
   const [timeRange, setTimeRange] = useState("today")
   const [viewType, setViewType] = useState("individual")
-  const [dashboardData, setDashboardData] = useState(null)
+  const [dashboardData, setDashboardData] = useState<DashboardData | null>(null)
   const [loading, setLoading] = useState(true)
   const [customDateRange, setCustomDateRange] = useState<DateRange | undefined>({
     from: new Date(2025, 1, 1), // Feb 1, 2025
@@ -33,7 +34,7 @@ export function DashboardContent() {
           url += `&fromDate=${customDateRange.from.toISOString()}&toDate=${customDateRange.to.toISOString()}`
         }
         const response = await fetch(url)
-        const data = await response.json()
+        const data: DashboardData = await response.json()
         setDashboardData(data)
       } catch (error) {
         console.error("Failed to fetch dashboard data:", error)

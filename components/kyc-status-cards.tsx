@@ -1,10 +1,10 @@
 import { Card, CardContent } from "@/components/ui/card"
-import { Rocket, Clock, CheckCircle, Shield, Pause, FileX } from "lucide-react"
+import { Rocket, Clock, CheckCircle, Shield, Pause, FileX,} from "lucide-react"
 
 interface StatusCard {
   label: string
   count: number
-  icon: any
+  icon: string
   color: string
 }
 

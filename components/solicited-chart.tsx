@@ -13,7 +13,20 @@ interface SolicitedChartProps {
   }
 }
 
-const CustomTooltip = ({ active, payload }: any) => {
+interface TooltipPayload {
+  name: string
+  value: number
+  payload: {
+    total: number
+  }
+}
+
+interface CustomTooltipProps {
+  active?: boolean
+  payload?: TooltipPayload[]
+}
+
+const CustomTooltip = ({ active, payload }: CustomTooltipProps) => {
   if (active && payload && payload.length) {
     const data = payload[0]
     return (

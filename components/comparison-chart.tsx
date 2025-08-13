@@ -11,12 +11,24 @@ interface ComparisonChartProps {
   }>
 }
 
-const CustomTooltip = ({ active, payload, label }: any) => {
+interface TooltipPayload {
+  name: string
+  value: number
+  color: string
+}
+
+interface CustomTooltipProps {
+  active?: boolean
+  payload?: TooltipPayload[]
+  label?: string
+}
+
+const CustomTooltip = ({ active, payload, label }: CustomTooltipProps) => {
   if (active && payload && payload.length) {
     return (
       <div className="bg-white dark:bg-gray-800 border border-gray-200 dark:border-gray-700 rounded-lg p-3 shadow-lg">
         <p className="font-medium text-gray-900 dark:text-white">{`${label}`}</p>
-        {payload.map((entry: any, index: number) => (
+        {payload.map((entry: TooltipPayload, index: number) => (
           <p key={index} className="text-sm font-medium" style={{ color: entry.color }}>
             {`${entry.name}: ${entry.value.toLocaleString()}`}
           </p>
