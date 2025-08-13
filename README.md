@@ -101,6 +101,17 @@ GET /api/pdf?url=https://example.com
 - For production deployments, consider using a Docker container with Chrome pre-installed
 - The API includes fallback mechanisms and detailed error messages for debugging
 
+### Vercel Deployment
+For Vercel deployment, the PDF generation may not work due to Chrome installation limitations. Consider these alternatives:
+
+1. **Use the simple PDF endpoint**: `/api/pdf-simple` - Returns HTML that can be converted to PDF client-side
+2. **Use a third-party service**: Consider services like Browserless, Puppeteer Cloud, or similar
+3. **Client-side PDF generation**: Use libraries like jsPDF or html2pdf.js in the browser
+
+### Alternative PDF Endpoints
+- `/api/pdf` - Full PDF generation with Puppeteer (requires Chrome)
+- `/api/pdf-simple` - Simple HTML export (works on Vercel)
+
 ## 📚 Learn More
 
 Expand your Next.js knowledge with these resources:

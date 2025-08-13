@@ -185,25 +185,78 @@ export async function GET(req: NextRequest) {
   try {
     console.log(`Generating PDF for: ${url}`);
     
-    browser = await puppeteer.launch({
-      headless: true,
-      args: [
-        '--no-sandbox',
-        '--disable-setuid-sandbox',
-        '--disable-dev-shm-usage',
-        '--disable-gpu',
-        '--disable-features=VizDisplayCompositor',
-        '--disable-background-timer-throttling',
-        '--disable-backgrounding-occluded-windows',
-        '--disable-renderer-backgrounding',
-        '--disable-ipc-flooding-protection',
-        '--disable-extensions',
-        '--disable-default-apps',
-        '--disable-sync',
-      ],
-      // Use the bundled Chromium that comes with Puppeteer
-      executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined,
-    });
+    // Try multiple Chrome executable paths for different environments
+    const chromePaths = [
+      process.env.PUPPETEER_EXECUTABLE_PATH,
+      '/usr/bin/google-chrome',
+      '/usr/bin/chromium-browser',
+      '/usr/bin/chromium',
+      '/snap/bin/chromium',
+      process.platform === 'win32' ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' : undefined,
+      process.platform === 'darwin' ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : undefined,
+    ].filter(Boolean);
+
+    let launchError;
+
+    // Try to launch with different configurations
+    for (const executablePath of chromePaths) {
+      try {
+        console.log(`Attempting to launch Chrome with path: ${executablePath || 'default'}`);
+        browser = await puppeteer.launch({
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--disable-features=VizDisplayCompositor',
+            '--disable-background-timer-throttling',
+            '--disable-backgrounding-occluded-windows',
+            '--disable-renderer-backgrounding',
+            '--disable-ipc-flooding-protection',
+            '--disable-extensions',
+            '--disable-default-apps',
+            '--disable-sync',
+            '--single-process',
+            '--no-zygote',
+            '--disable-web-security',
+            '--disable-features=TranslateUI',
+            '--disable-ipc-flooding-protection',
+          ],
+          executablePath: executablePath || undefined,
+        });
+        console.log('Chrome launched successfully');
+        break;
+             } catch (error) {
+         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+         console.log(`Failed to launch with path ${executablePath}:`, errorMessage);
+         launchError = error;
+         continue;
+       }
+    }
+
+    // If all attempts failed, try with bundled Chromium
+    if (!browser) {
+      try {
+        console.log('Attempting to launch with bundled Chromium...');
+        browser = await puppeteer.launch({
+          headless: true,
+          args: [
+            '--no-sandbox',
+            '--disable-setuid-sandbox',
+            '--disable-dev-shm-usage',
+            '--disable-gpu',
+            '--single-process',
+            '--no-zygote',
+          ],
+        });
+        console.log('Bundled Chromium launched successfully');
+             } catch (error) {
+         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
+         console.log('Failed to launch bundled Chromium:', errorMessage);
+         throw new Error(`Failed to launch Chrome: ${errorMessage}. Please ensure Chrome is installed or use a different PDF generation method.`);
+       }
+    }
 
     const page = await browser.newPage();
     
