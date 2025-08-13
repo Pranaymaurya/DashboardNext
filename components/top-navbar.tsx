@@ -2,6 +2,7 @@
 
 import { Search, Bell, ChevronDown, Sun, Moon } from "lucide-react"
 import { Input } from "@/components/ui/input"
+import { useRouter } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { useTheme } from "next-themes"
@@ -44,6 +45,18 @@ export function TopNavbar() {
             className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
           >
             {theme === "dark" ? <Sun className="h-4 w-4" /> : <Moon className="h-4 w-4" />}
+          </Button>
+
+          <Button
+            variant="ghost"
+            size="sm"
+            onClick={() => {
+              const currentUrl = window.location.origin + window.location.pathname;
+              window.open(`/api/pdf?url=${encodeURIComponent(currentUrl)}`, '_blank');
+            }}
+            className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
+          >
+            Download PDF
           </Button>
 
           <Button
