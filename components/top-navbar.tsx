@@ -11,6 +11,7 @@ import { useEffect, useState } from "react"
 export function TopNavbar() {
   const { theme, setTheme } = useTheme()
   const [mounted, setMounted] = useState(false)
+  const [downloading, setDownloading] = useState(false)
 
   useEffect(() => {
     setMounted(true)
@@ -50,13 +51,47 @@ export function TopNavbar() {
           <Button
             variant="ghost"
             size="sm"
-            onClick={() => {
-              const currentUrl = window.location.origin + window.location.pathname;
-              window.open(`/api/pdf?url=${encodeURIComponent(currentUrl)}`, '_blank');
+            onClick={async () => {
+              try {
+                setDownloading(true)
+                const currentUrl = window.location.origin + window.location.pathname
+                const res = await fetch('/api/pdf', {
+                  method: 'POST',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    url: currentUrl,
+                    size: 'full',
+                    style: 'original',
+                    landscape: false,
+                    scale: 1,
+                    timeout: 120000,
+                    delay: 300
+                  })
+                })
+                if (!res.ok) {
+                  const err = await res.json().catch(() => ({}))
+                  throw new Error(err?.error || 'Failed to generate PDF')
+                }
+                const blob = await res.blob()
+                const href = URL.createObjectURL(blob)
+                const a = document.createElement('a')
+                a.href = href
+                a.download = `dashboard-${Date.now()}.pdf`
+                document.body.appendChild(a)
+                a.click()
+                a.remove()
+                URL.revokeObjectURL(href)
+              } catch (e) {
+                const message = e instanceof Error ? e.message : 'PDF generation failed'
+                // eslint-disable-next-line no-alert
+                alert(message)
+              } finally {
+                setDownloading(false)
+              }
             }}
             className="text-gray-600 dark:text-gray-400 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-gray-800"
           >
-            Download PDF
+            {downloading ? 'Generating…' : 'Download PDF'}
           </Button>
 
           <Button

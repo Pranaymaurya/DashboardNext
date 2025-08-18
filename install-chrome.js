@@ -21,3 +21,4 @@ try {
   console.log('3. For production, consider using a Docker container with Chrome pre-installed');
   process.exit(1);
 }
+

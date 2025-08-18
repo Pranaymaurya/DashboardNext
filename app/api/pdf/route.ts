@@ -1,422 +1,210 @@
 import { NextRequest, NextResponse } from 'next/server';
-import puppeteer, { Page } from 'puppeteer';
+import puppeteer, { Browser, Page } from 'puppeteer';
 
-// Utility function for delays
+export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
 const delay = (ms: number) => new Promise(resolve => setTimeout(resolve, ms));
 
-// Advanced page loading with multiple strategies
-async function loadFullPageContent(page: Page) {
-  console.log('Loading full page content...');
-  
-  // Strategy 1: Aggressive infinite scroll
-  await page.evaluate(async () => {
-    const scrollStep = 500;
-    const scrollDelay = 300;
-    const maxScrollTime = 45000; // 45 seconds
-    const startTime = Date.now();
-    
-    let lastHeight = 0;
-    let stagnantCount = 0;
-    let currentPosition = 0;
+async function waitForDashboard(page: Page, timeoutMs: number): Promise<void> {
+  console.log('Waiting for dashboard content...');
+  await page.waitForFunction(() => {
+    const loading = document.querySelectorAll('[data-loading="true"]').length > 0;
+    const skeleton = document.querySelectorAll('.animate-pulse').length > 0;
+    const loaded = document.querySelector('[data-dashboard-loaded="true"]');
+    const components = [
+      '[data-component="kyc-stats"]',
+      '[data-component="comparison-chart"]',
+      '[data-component="status-cards"]',
+      '[data-component="solicited-chart"]'
+    ].every(selector => document.querySelector(selector));
+    const hasCharts = document.querySelectorAll('svg').length > 0;
+    const hasData = !!document.body.textContent?.match(/\d{1,3}(,\d{3})*|Total KYC|New KYC/);
+    const appReadyFlag = (window as any).__PDF_READY__ === true;
 
-    while (Date.now() - startTime < maxScrollTime) {
-      // Get current scroll height
-      // const scrollHeight = Math.max(
-      //   document.body.scrollHeight,
-      //   document.documentElement.scrollHeight,
-      //   document.body.offsetHeight,
-      //   document.documentElement.offsetHeight
-      // );
+    return appReadyFlag || (!loading && !skeleton && loaded && components && (hasCharts || hasData));
+  }, { timeout: timeoutMs, polling: 500 });
 
-      // Scroll down
-      window.scrollBy(0, scrollStep);
-      currentPosition += scrollStep;
-      
-      await new Promise(resolve => setTimeout(resolve, scrollDelay));
-
-      // Check if page height increased
-      const newHeight = Math.max(
-        document.body.scrollHeight,
-        document.documentElement.scrollHeight,
-        document.body.offsetHeight,
-        document.documentElement.offsetHeight
-      );
-
-      if (newHeight > lastHeight) {
-        lastHeight = newHeight;
-        stagnantCount = 0;
-      } else {
-        stagnantCount++;
-      }
-
-      // If we've reached the bottom and no new content for several attempts
-      if (currentPosition >= newHeight && stagnantCount >= 8) {
-        console.log('Reached bottom of page');
-        break;
-      }
-
-      // Try to trigger lazy loading by clicking load more buttons
-      const loadMoreSelectors = [
-        'button[class*="load"]',
-        'button[class*="more"]',
-        'a[class*="load"]',
-        'a[class*="more"]',
-        '[data-testid*="load"]',
-        '.load-more',
-        '.show-more'
-      ];
-
-      for (const selector of loadMoreSelectors) {
-        const elements = document.querySelectorAll(selector);
-        elements.forEach(el => {
-          if (el.textContent?.toLowerCase().includes('load') || 
-              el.textContent?.toLowerCase().includes('more')) {
-            (el as HTMLElement).click();
-          }
-        });
-      }
-    }
-
-    // Scroll back to top slowly to ensure all content is rendered
-    const scrollToTop = () => {
-      return new Promise<void>((resolve) => {
-        const scrollUp = () => {
-          if (window.pageYOffset > 0) {
-            window.scrollBy(0, -500);
-            setTimeout(scrollUp, 50);
-          } else {
-            resolve();
-          }
-        };
-        scrollUp();
-      });
-    };
-
-    await scrollToTop();
-    await new Promise(resolve => setTimeout(resolve, 2000));
-  });
+  // Allow animations/charts to settle
+  await delay(3000);
 }
 
-// Get comprehensive page dimensions
-async function getPageDimensions(page: Page) {
-  return await page.evaluate(() => {
-    // Get all possible height measurements
-    const body = document.body;
-    const html = document.documentElement;
-    
-    const heights = [
-      body.scrollHeight,
-      body.offsetHeight,
-      body.clientHeight,
-      html.scrollHeight,
-      html.offsetHeight,
-      html.clientHeight,
-      window.innerHeight,
-      window.screen.height
-    ].filter(h => h > 0);
+async function injectStyles(page: Page, styleMode: 'original' | 'optimized'): Promise<void> {
+  const baseCss = `
+    * { -webkit-print-color-adjust: exact !important; print-color-adjust: exact !important; }
+    body, html { height: auto !important; overflow: visible !important; background: #ffffff !important; }
+    .animate-pulse { animation: none !important; }
+    svg, canvas, img { max-width: 100% !important; height: auto !important; }
+    .overflow-hidden { overflow: visible !important; }
+    [data-component] { page-break-inside: avoid; break-inside: avoid; }
+    [data-content="dashboard-main"] { break-inside: avoid; }
+  `;
+  const optimizedCss = `
+    .fixed, .sticky { position: static !important; }
+    /* Collapse dashboard layout to one column for print */
+    @media print {
+      .lg\\:grid-cols-3 { grid-template-columns: 1fr !important; }
+      .lg\\:col-span-2 { grid-column: auto !important; }
+      .grid { gap: 12px !important; }
+    }
+    @media print {
+      @page { size: A4; margin: 12mm; }
+      aside, header, nav, .no-print, [data-print="hide"] { display: none !important; }
+      main { padding: 0 !important; margin: 0 !important; width: 100% !important; }
+    }
+  `;
+  await page.addStyleTag({ content: styleMode === 'optimized' ? baseCss + optimizedCss : baseCss });
+}
 
-    const widths = [
-      body.scrollWidth,
-      body.offsetWidth,
-      body.clientWidth,
-      html.scrollWidth,
-      html.offsetWidth,
-      html.clientWidth,
-      window.innerWidth,
-      window.screen.width
-    ].filter(w => w > 0);
-
-    // Also check all elements for their bottom position
-    const allElements = document.querySelectorAll('*');
-    let maxBottom = 0;
-    let maxRight = 0;
-
-    allElements.forEach(el => {
-      const rect = el.getBoundingClientRect();
-      const computedStyle = window.getComputedStyle(el);
-      
-      if (computedStyle.display !== 'none' && computedStyle.visibility !== 'hidden') {
-        maxBottom = Math.max(maxBottom, rect.bottom + window.pageYOffset);
-        maxRight = Math.max(maxRight, rect.right + window.pageXOffset);
-      }
-    });
-
-    const finalHeight = Math.max(
-      ...heights,
-      maxBottom,
-      document.documentElement.getBoundingClientRect().height + window.pageYOffset
-    );
-
-    const finalWidth = Math.max(
-      ...widths,
-      maxRight,
-      document.documentElement.getBoundingClientRect().width + window.pageXOffset
-    );
-
-    return { 
-      width: Math.ceil(finalWidth), 
-      height: Math.ceil(finalHeight),
-      measurements: {
-        bodyScrollHeight: body.scrollHeight,
-        htmlScrollHeight: html.scrollHeight,
-        maxElementBottom: maxBottom,
-        calculatedHeight: finalHeight
-      }
-    };
+async function getBrowser(): Promise<Browser> {
+  return puppeteer.launch({
+    headless: true,
+    args: [
+      '--no-sandbox',
+      '--disable-setuid-sandbox',
+      '--disable-gpu',
+      '--disable-dev-shm-usage',
+      '--font-render-hinting=medium'
+    ],
+    executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || undefined
   });
 }
 
 export async function GET(req: NextRequest) {
-  const { searchParams } = new URL(req.url);
-  const url = searchParams.get('url');
+  const params = new URL(req.url).searchParams;
+  const url = params.get('url');
+  if (!url) return NextResponse.json({ error: 'Missing URL' }, { status: 400 });
 
-  if (!url) {
-    return NextResponse.json({ error: 'URL parameter is missing' }, { status: 400 });
-  }
+  const sizeMode = (params.get('size') || 'a4').toLowerCase(); // 'a4' | 'full'
+  const styleMode = ((params.get('style') || 'original') as 'original' | 'optimized');
+  const landscape = params.get('landscape') === 'true';
+  const scaleParam = Number(params.get('scale') || '0.9');
+  const scale = isNaN(scaleParam) ? 1 : Math.min(Math.max(scaleParam, 0.5), 1.5);
+  const timeoutMs = Math.max(10000, Math.min(180000, Number(params.get('timeout') || '90000')));
+  const readySelector = params.get('waitFor') || '';
+  const extraDelayMs = Math.max(0, Math.min(15000, Number(params.get('delay') || '0')));
 
-  // Validate URL format
+  let browser: Browser | undefined;
   try {
-    new URL(url);
-  } catch {
-    return NextResponse.json({ error: 'Invalid URL format' }, { status: 400 });
-  }
-
-  let browser;
-  try {
-    console.log(`Generating PDF for: ${url}`);
-    
-    // Try multiple Chrome executable paths for different environments
-    const chromePaths = [
-      process.env.PUPPETEER_EXECUTABLE_PATH,
-      '/usr/bin/google-chrome',
-      '/usr/bin/chromium-browser',
-      '/usr/bin/chromium',
-      '/snap/bin/chromium',
-      process.platform === 'win32' ? 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe' : undefined,
-      process.platform === 'darwin' ? '/Applications/Google Chrome.app/Contents/MacOS/Google Chrome' : undefined,
-    ].filter(Boolean);
-
-    // Try to launch with different configurations
-    for (const executablePath of chromePaths) {
-      try {
-        console.log(`Attempting to launch Chrome with path: ${executablePath || 'default'}`);
-        browser = await puppeteer.launch({
-          headless: true,
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--disable-features=VizDisplayCompositor',
-            '--disable-background-timer-throttling',
-            '--disable-backgrounding-occluded-windows',
-            '--disable-renderer-backgrounding',
-            '--disable-ipc-flooding-protection',
-            '--disable-extensions',
-            '--disable-default-apps',
-            '--disable-sync',
-            '--single-process',
-            '--no-zygote',
-            '--disable-web-security',
-            '--disable-features=TranslateUI',
-            '--disable-ipc-flooding-protection',
-          ],
-          executablePath: executablePath || undefined,
-        });
-        console.log('Chrome launched successfully');
-        break;
-             } catch (error) {
-         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-         console.log(`Failed to launch with path ${executablePath}:`, errorMessage);
-         continue;
-       }
-    }
-
-    // If all attempts failed, try with bundled Chromium
-    if (!browser) {
-      try {
-        console.log('Attempting to launch with bundled Chromium...');
-        browser = await puppeteer.launch({
-          headless: true,
-          args: [
-            '--no-sandbox',
-            '--disable-setuid-sandbox',
-            '--disable-dev-shm-usage',
-            '--disable-gpu',
-            '--single-process',
-            '--no-zygote',
-          ],
-        });
-        console.log('Bundled Chromium launched successfully');
-             } catch (error) {
-         const errorMessage = error instanceof Error ? error.message : 'Unknown error';
-         console.log('Failed to launch bundled Chromium:', errorMessage);
-         throw new Error(`Failed to launch Chrome: ${errorMessage}. Please ensure Chrome is installed or use a different PDF generation method.`);
-       }
-    }
-
+    browser = await getBrowser();
     const page = await browser.newPage();
-    
-    // Set a realistic user agent
-    await page.setUserAgent('Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36');
-    
-    // Set initial viewport - larger for better rendering
-    await page.setViewport({
-      width: 1920,
-      height: 1080,
-      deviceScaleFactor: 1,
-    });
+    await page.setViewport({ width: 1920, height: 1080 });
 
-    // Intercept requests to block unnecessary resources for faster loading
-    await page.setRequestInterception(true);
-    page.on('request', (req) => {
-      const resourceType = req.resourceType();
-      if (['font', 'media'].includes(resourceType)) {
-        req.abort();
-      } else {
-        req.continue();
-      }
-    });
+    // Forward cookies for same-origin URLs so authenticated pages render properly
+    const cookieHeader = req.headers.get('cookie') || '';
+    const target = new URL(url);
+    if (cookieHeader && target.host === req.nextUrl.host) {
+      await page.setExtraHTTPHeaders({ Cookie: cookieHeader });
+    }
 
-    console.log('Navigating to page...');
-    await page.goto(url, { 
-      waitUntil: 'domcontentloaded', 
-      timeout: 60000 
-    });
+    await page.goto(url, { waitUntil: 'networkidle0', timeout: timeoutMs });
 
-    // Wait for network to settle
-    await delay(3000);
+    await injectStyles(page, styleMode);
 
-    // Load all content
-    await loadFullPageContent(page);
-
-    // Additional wait for any final rendering
-    await delay(3000);
-
-    // Get comprehensive dimensions
-    const dimensions = await getPageDimensions(page);
-    console.log('Page dimensions:', dimensions);
-
-    // Ensure reasonable minimum dimensions
-    dimensions.width = Math.max(dimensions.width, 1920);
-    dimensions.height = Math.max(dimensions.height, 1080);
-
-    // Set the viewport to match the full content size
-    await page.setViewport({
-      width: dimensions.width,
-      height: dimensions.height,
-      deviceScaleFactor: 1,
-    });
-
-    // Wait for viewport change to take effect
-    await delay(2000);
-
-    console.log('Generating PDF with dimensions:', dimensions);
-
-    // Generate PDF using multiple strategies
-    let pdfBuffer;
-    
+    // Wait strategy (selector -> appReadyFlag/dashboard -> optional delay)
     try {
-      // First try: Full page PDF
-      pdfBuffer = await page.pdf({
-        width: `${dimensions.width}px`,
-        height: `${dimensions.height}px`,
-        printBackground: true,
-        margin: { top: '0px', right: '0px', bottom: '0px', left: '0px' },
-        preferCSSPageSize: false,
-        timeout: 90000,
-      });
-    } catch (pdfError) {
-      console.log(pdfError);
-      
-      // Fallback: Screenshot to PDF
-      // const screenshot = await page.screenshot({
-      //   fullPage: true,
-      //   type: 'png',
-      // });
-
-      // Create a simple PDF wrapper for the screenshot
-      // Note: This is a basic implementation. For production, consider using a proper PDF library
-      const pdfHeader = `%PDF-1.4
-1 0 obj
-<<
-/Type /Catalog
-/Pages 2 0 R
->>
-endobj
-2 0 obj
-<<
-/Type /Pages
-/Kids [3 0 R]
-/Count 1
->>
-endobj
-3 0 obj
-<<
-/Type /Page
-/Parent 2 0 R
-/MediaBox [0 0 ${dimensions.width} ${dimensions.height}]
->>
-endobj
-xref
-0 4
-0000000000 65535 f 
-0000000015 65535 n 
-0000000074 65535 n 
-0000000131 65535 n 
-trailer
-<<
-/Size 4
-/Root 1 0 R
->>
-startxref
-210
-%%EOF`;
-
-      pdfBuffer = Buffer.from(pdfHeader);
+      if (readySelector) {
+        await page.waitForSelector(readySelector, { timeout: timeoutMs });
+      } else {
+        await waitForDashboard(page, timeoutMs);
+      }
+    } catch {
+      // If the content-based wait fails, fall back to a short fixed delay
+      await delay(2000);
     }
 
-    console.log(`PDF generated successfully. Size: ${pdfBuffer.length} bytes`);
+    if (extraDelayMs > 0) {
+      await delay(extraDelayMs);
+    }
 
-    const headers = new Headers();
-    headers.set('Content-Type', 'application/pdf');
-    headers.set('Content-Disposition', 'attachment; filename="full-webpage.pdf"');
-    headers.set('Content-Length', pdfBuffer.length.toString());
-
-    return new NextResponse(new Blob([pdfBuffer as BlobPart]), {
-      headers,
+    // Ensure web fonts are loaded
+    await page.evaluate(async () => {
+      // @ts-ignore
+      if (document.fonts && document.fonts.ready) {
+        // @ts-ignore
+        await document.fonts.ready;
+      }
     });
 
-  } catch (error) {
-    console.error('Error generating PDF:', error);
-    
-    const errorMessage = error instanceof Error ? error.message : 'Unknown error occurred';
-    let statusCode = 500;
-    let suggestion = 'Try with a simpler page or check if the URL is accessible';
-    
-    // Handle specific Chrome installation errors
-    if (errorMessage.includes('Could not find Chrome') || errorMessage.includes('Chrome not found')) {
-      statusCode = 503;
-      suggestion = 'Chrome browser is not installed. Please run: npx puppeteer browsers install chrome';
-    } else if (errorMessage.includes('timeout')) {
-      statusCode = 504;
-      suggestion = 'Request timed out. Try with a simpler page or check if the URL is accessible';
+    // Auto-scroll to trigger lazy-loaded content
+    await page.evaluate(async () => {
+      await new Promise<void>(resolve => {
+        const distance = 800;
+        const intervalMs = 100;
+        const timer = setInterval(() => {
+          const scrollTop = window.scrollY;
+          const viewportBottom = window.innerHeight + scrollTop;
+          const fullHeight = document.body.scrollHeight;
+          window.scrollBy(0, distance);
+          if (viewportBottom >= fullHeight) {
+            clearInterval(timer);
+            window.scrollTo(0, 0);
+            setTimeout(() => resolve(), 300);
+          }
+        }, intervalMs);
+      });
+    });
+
+    let pdf: Uint8Array;
+    if (sizeMode === 'full') {
+      const { width, height } = await page.evaluate(() => ({
+        width: Math.min(document.documentElement.scrollWidth, 2560),
+        height: document.documentElement.scrollHeight
+      }));
+      await page.setViewport({ width, height });
+      await delay(300);
+      await page.emulateMediaType('screen');
+      pdf = await page.pdf({
+        width: `${width}px`,
+        height: `${height}px`,
+        printBackground: true,
+        margin: { top: '0px', right: '0px', bottom: '0px', left: '0px' }
+      });
+    } else {
+      await page.emulateMediaType(styleMode === 'optimized' ? 'print' : 'screen');
+      pdf = await page.pdf({
+        format: 'A4',
+        landscape,
+        printBackground: true,
+        scale,
+        preferCSSPageSize: true,
+        displayHeaderFooter: styleMode === 'optimized',
+        headerTemplate: styleMode === 'optimized' ? `<div style=\"font-size:8px; color: transparent; width: 100%;\">.</div>` : '<div></div>',
+        footerTemplate: styleMode === 'optimized' ? `
+          <div style=\"font-size:10px; color:#6b7280; width:100%; padding: 0 12mm;\">\n            <div style=\"display:flex; justify-content:space-between; width:100%;\">\n              <span class=\"date\"></span>\n              <span>Page <span class=\"pageNumber\"></span> of <span class=\"totalPages\"></span></span>\n            </div>\n          </div>
+        ` : '<div></div>',
+        margin: styleMode === 'optimized' ? { top: '12mm', right: '12mm', bottom: '18mm', left: '12mm' } : { top: '10mm', right: '10mm', bottom: '10mm', left: '10mm' }
+      });
     }
-    
-    return NextResponse.json({ 
-      error: 'Failed to generate PDF', 
-      details: errorMessage,
-      timestamp: new Date().toISOString(),
-      suggestion: suggestion
-    }, { status: statusCode });
-  } finally {
-    if (browser) {
-      try {
-        await browser.close();
-        console.log('Browser closed successfully');
-      } catch (closeError) {
-        console.error('Error closing browser:', closeError);
+
+    return new NextResponse(pdf, {
+      headers: {
+        'Content-Type': 'application/pdf',
+        'Content-Disposition': `attachment; filename="dashboard-${Date.now()}.pdf"`,
+        'Cache-Control': 'no-store'
       }
-    }
+    });
+  } catch (err: unknown) {
+    const message = err instanceof Error ? err.message : 'PDF generation failed';
+    return NextResponse.json({ error: message }, { status: 500 });
+  } finally {
+    if (browser) await browser.close();
   }
+}
+
+export async function POST(req: NextRequest) {
+  const body = await req.json().catch(() => ({} as any));
+  const url = body.url as string | undefined;
+  if (!url) return NextResponse.json({ error: 'URL is required' }, { status: 400 });
+
+  const qs = new URLSearchParams({ url });
+  if (body.size) qs.set('size', String(body.size));
+  if (body.landscape !== undefined) qs.set('landscape', String(!!body.landscape));
+  if (body.scale) qs.set('scale', String(body.scale));
+  if (body.timeout) qs.set('timeout', String(body.timeout));
+  if (body.waitFor) qs.set('waitFor', String(body.waitFor));
+  if (body.delay) qs.set('delay', String(body.delay));
+
+  const newReq = new NextRequest(`${req.nextUrl.origin}${req.nextUrl.pathname}?${qs.toString()}`);
+  return GET(newReq);
 }

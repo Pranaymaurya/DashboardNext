@@ -10,7 +10,7 @@ import { CategoriesSection } from "@/components/categories-section"
 import { SolicitedChart } from "@/components/solicited-chart"
 import { PANDataStats } from "@/components/pan-data-stats"
 import { DatePickerWithRange } from "@/components/date-range-picker"
-import { Calendar } from "lucide-react"
+import { Calendar, Home } from "lucide-react"
 import type { DateRange } from "react-day-picker"
 import { format } from "date-fns"
 import type { DashboardData } from "@/types/dashboard"
@@ -40,6 +40,10 @@ export function DashboardContent() {
         console.error("Failed to fetch dashboard data:", error)
       } finally {
         setLoading(false)
+        try {
+          ;(window as any).__PDF_READY__ = true
+          document.body.setAttribute('data-dashboard-loaded', 'true')
+        } catch {}
       }
     }
 
@@ -55,14 +59,42 @@ export function DashboardContent() {
 
   if (loading) {
     return (
-      <div className="space-y-6">
-        {/* Loading skeletons */}
-        <div className="animate-pulse space-y-4">
-          <div className="h-8 bg-gray-200 dark:bg-gray-800 rounded w-48"></div>
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
-            {[...Array(4)].map((_, i) => (
-              <div key={i} className="h-32 bg-gray-200 dark:bg-gray-800 rounded"></div>
-            ))}
+      <div className="min-h-screen bg-gray-50 p-6" data-loading="true">
+        {/* Loading State - PDF generation will wait until this disappears */}
+        <div className="animate-pulse space-y-6">
+          {/* Header skeleton */}
+          <div className="flex justify-between items-center">
+            <div className="h-6 bg-gray-200 rounded w-32"></div>
+            <div className="flex space-x-2">
+              <div className="h-10 bg-gray-200 rounded w-32"></div>
+              <div className="h-10 bg-gray-200 rounded w-32"></div>
+              <div className="h-10 bg-gray-200 rounded w-32"></div>
+            </div>
+          </div>
+          
+          {/* Content skeleton */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            <div className="lg:col-span-2 space-y-6">
+              {/* Stats cards skeleton */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {[...Array(4)].map((_, i) => (
+                  <div key={`skeleton-${i}`} className="h-32 bg-gray-200 rounded animate-pulse"></div>
+                ))}
+              </div>
+              {/* Chart skeleton */}
+              <div className="h-64 bg-gray-200 rounded animate-pulse"></div>
+              {/* Status cards skeleton */}
+              <div className="grid grid-cols-2 md:grid-cols-6 gap-4">
+                {[...Array(6)].map((_, i) => (
+                  <div key={`status-skeleton-${i}`} className="h-24 bg-gray-200 rounded animate-pulse"></div>
+                ))}
+              </div>
+            </div>
+            <div className="space-y-6">
+              {/* Right column skeleton */}
+              <div className="h-48 bg-gray-200 rounded animate-pulse"></div>
+              <div className="h-64 bg-gray-200 rounded animate-pulse"></div>
+            </div>
           </div>
         </div>
       </div>
@@ -70,9 +102,13 @@ export function DashboardContent() {
   }
 
   return (
-    <div className="space-y-6">
-      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-        <h1 className="text-2xl font-bold text-gray-900 dark:text-white">Dashboard</h1>
+    <div className="min-h-screen bg-gray-50 p-6" data-dashboard-loaded="true">
+      {/* Breadcrumb & Controls */}
+      <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+        <div className="flex items-center space-x-2 text-sm text-gray-600">
+          <Home className="w-4 h-4" />
+          <span>Dashboard</span>
+        </div>
 
         <div className="flex flex-wrap gap-2">
           <Tabs value={timeRange} onValueChange={setTimeRange}>
@@ -106,21 +142,41 @@ export function DashboardContent() {
       </div>
 
       {dashboardData && (
-        <>
-          <KYCStatsCards data={dashboardData.kycStats} />
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-6" data-content="dashboard-main">
+          {/* Left Column - Main Stats and Charts */}
+          <div className="lg:col-span-2 space-y-6">
+            {/* KYC Stats Cards */}
+            <div data-component="kyc-stats">
+              <KYCStatsCards data={dashboardData.kycStats} />
+            </div>
 
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <ComparisonChart data={dashboardData.comparisonData} />
-            <CategoriesSection data={dashboardData.categoriesData} />
+            {/* Comparison Chart */}
+            <div data-component="comparison-chart">
+              <ComparisonChart data={dashboardData.comparisonData} />
+            </div>
+
+            {/* KYC Status Cards */}
+            <div data-component="status-cards">
+              <KYCStatusCards data={dashboardData.statusCards} />
+            </div>
           </div>
 
-          <KYCStatusCards data={dashboardData.statusCards} />
-
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            <SolicitedChart data={dashboardData.solicitedData} />
-            <PANDataStats data={dashboardData.panDataStats} />
+          {/* Right Column - Categories, Solicited Chart, PAN Stats */}
+          <div className="space-y-6">
+            <div data-component="categories">
+              <CategoriesSection data={dashboardData.categoriesData} />
+            </div>
+            
+            <div data-component="solicited-chart">
+              <SolicitedChart data={dashboardData.solicitedData} />
+            </div>
+            
+            {/* Uncomment when needed */}
+            {/* <div data-component="pan-stats">
+              <PANDataStats data={dashboardData.panDataStats} />
+            </div> */}
           </div>
-        </>
+        </div>
       )}
     </div>
   )
